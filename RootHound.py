@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""
+""" 
 RootHound  -  LinPEAS -> privilege-escalation attack-path graph 
 
 Reads a LinPEAS output file, matches
