@@ -184,6 +184,26 @@ GTFOBINS_SGID = {
     "cat": "read group-readable secrets (e.g. /etc/shadow if group=shadow)",
 }
 
+# ── GTFOBins reference-link helper ───────────────────────────────────────────
+# Only link to a binary's GTFOBins page if that page actually exists (i.e. the
+# binary is in our rulebook). Binaries GTFOBins doesn't cover (clockdiff, suexec,
+# any unknown SUID/cap binary) -> the GTFOBins home, which always loads. Also
+# maps names GTFOBins spells differently (python3 -> python). GTFOBins contexts
+# are only sudo/suid/capabilities -> there is NO #sgid anchor.
+GTFOBINS_ALL = (set(GTFOBINS_SUID) | set(GTFOBINS_SUDO) | set(GTFOBINS_SGID)
+                | {b for (b, _c) in GTFOBINS_CAPS if b != "*"})
+GTFO_ALIAS = {"python3": "python", "python2": "python"}
+
+def gtfo_ref(b, ctx=""):
+    """Return a GTFOBins URL that is guaranteed not to 404."""
+    if b in GTFOBINS_ALL:
+        page = GTFO_ALIAS.get(b, b)
+        url = f"https://gtfobins.github.io/gtfobins/{page}/"
+        if ctx in ("suid", "sudo", "capabilities"):   # valid GTFOBins contexts only
+            url += f"#{ctx}"
+        return url
+    return "https://gtfobins.github.io/"
+
 # ── Kernel LPE by version: (name, cve, lo_inclusive, hi_exclusive, note) ──
 # NOTE: version alone is NOT proof - distros backport fixes. Flagged as LIKELY.
 KERNEL_CVES = [
@@ -588,17 +608,17 @@ def build_graph(f):
             b = nid[5:]
             n["desc"] = f"You may run '{b}' as root via sudo (NOPASSWD). If '{b}' can spawn a shell or write files, that's root."
             n["abuse"] = GTFOBINS_SUDO.get(b, f"sudo {b}    # not in rulebook — check GTFOBins for an escape")
-            n["ref"] = f"https://gtfobins.github.io/gtfobins/{b}/#sudo"
+            n["ref"] = gtfo_ref(b, "sudo")
         elif nid.startswith("suid:"):
             b = nid[5:]
             n["desc"] = f"'{b}' has the SUID bit, so it runs as its owner (root) no matter who launches it."
             n["abuse"] = GTFOBINS_SUID.get(b, f"{b}    # no known GTFOBins SUID escape — investigate manually")
-            n["ref"] = f"https://gtfobins.github.io/gtfobins/{b}/#suid"
+            n["ref"] = gtfo_ref(b, "suid")
         elif nid.startswith("sgid:"):
             b = nid[5:]
             n["desc"] = f"'{b}' has the SGID bit — it runs with its owning group's privileges (often root or a sensitive group)."
             n["abuse"] = GTFOBINS_SGID.get(b, f"{b}    # check GTFOBins for an sgid escape")
-            n["ref"] = f"https://gtfobins.github.io/gtfobins/{b}/#sgid"
+            n["ref"] = gtfo_ref(b)
         elif nid.startswith("cap:"):
             b = nid[4:]; capname = ""; tech = ""
             for (p, cap) in f["caps"]:
@@ -608,7 +628,7 @@ def build_graph(f):
                     break
             n["desc"] = f"'{b}' carries the {capname} capability — a targeted root-ish power baked into the binary."
             n["abuse"] = tech or f"{b} has {capname} — check GTFOBins capabilities page."
-            n["ref"] = f"https://gtfobins.github.io/gtfobins/{b}/#capabilities"
+            n["ref"] = gtfo_ref(b, "capabilities")
         elif nid.startswith("grp:"):
             g = nid[4:]
             n["desc"] = f"Your user is a member of the '{g}' group, which grants root-equivalent power on this box."
@@ -708,10 +728,14 @@ def emit_html(graph, findings, libdir, srcname):
     confirmed = sum(1 for p in graph["paths"] if p["severity"] == "confirmed")
     likely    = sum(1 for p in graph["paths"] if p["severity"] == "likely")
 
+    # Embed as JSON inside a <script> block. json.dumps does NOT escape < > & /
+    # so a value containing </script> would break out of the script tag and allow
+    # HTML/JS injection (stored XSS from attacker-controlled target data). Neutralise
+    # the breakout characters — output stays valid JSON/JS, data loads identically.
     data = json.dumps(graph)
     data = (data.replace("<", "\\u003c").replace(">", "\\u003e")
-            .replace("&", "\\u0026")
-            .replace("\u2028", "\\u2028").replace("\u2029", "\\u2029"))
+                .replace("&", "\\u0026")
+                .replace("\u2028", "\\u2028").replace("\u2029", "\\u2029"))
     tmpl = TEMPLATE
     tmpl = tmpl.replace("/*CYTO*/", cyto)
     tmpl = tmpl.replace("/*DAGRE*/", dagre)
