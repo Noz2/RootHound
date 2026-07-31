@@ -291,6 +291,7 @@ def parse_linpeas(text):
         "sudo": [], "suid": [], "sgid": [], "caps": [], "cron": [],
         "writable": [], "writable_systemd": [],
         "sudo_version": None, "ld_preload": False, "nfs": [], "path_hijack": [],
+        "creds": [],
     }
 
     # user + groups
@@ -374,6 +375,20 @@ def parse_linpeas(text):
                 if d not in ("/usr/bin", "/bin", "/usr/sbin", "/sbin"):
                     f["path_hijack"].append(d)
 
+
+        if any(k in low for k in ("password", "passwd", "pwd", "secret", "db_pass", "apikey", "api_key", "token")) \
+           and "pam_" not in low and "/etc/pam" not in low and len(ln) < 300:
+            cm = re.search(r"(?i)(?:password|passwd|pwd|db_pass\w*|secret|api_?key|token)['\"]?\s*(?:=>|,|[:=])\s*['\"]?([^\s'\";,]{3,})", ln)
+            if cm:
+                val = cm.group(1).strip("'\"")
+                noise = {"password", "passwd", "pwd", "secret", "none", "null", "xxx", "changeme",
+                         "yourpassword", "your_password", "password_here", "example", "requisite",
+                         "required", "sufficient", "optional", "include", "nullok", "yes", "no",
+                         "true", "false", "here", "value", "string", "text", "email"}
+                if (val.lower() not in noise and not val.startswith("$") and len(val) >= 3
+                        and re.search(r"[A-Za-z0-9]", val) and "=" not in val):
+                    f["creds"].append(ln.strip()[:130])
+
         # Root cron:  "* * * * * root /opt/backup.sh"  or  "@reboot root /x"
         crm = re.search(r"^\s*(?:[\d*/,\-]+\s+){5}root\s+(/\S+)", ln) \
               or re.search(r"^\s*@\w+\s+root\s+(/\S+)", ln)
@@ -403,7 +418,7 @@ def parse_linpeas(text):
             f["writable"].append(s)
 
     # dedupe, keep order
-    for k in ("sudo", "suid", "sgid", "cron", "writable", "writable_systemd", "nfs", "path_hijack"):
+    for k in ("sudo", "suid", "sgid", "cron", "writable", "writable_systemd", "nfs", "path_hijack", "creds"):
         seen = set(); f[k] = [x for x in f[k] if not (x in seen or seen.add(x))]
     seen = set(); f["caps"] = [c for c in f["caps"] if not (c in seen or seen.add(c))]
 
@@ -570,6 +585,14 @@ def build_graph(f):
         edge(nid, ROOT, "likely", "if a root process calls a relative binary, plant it here")
         record_path([START, nid, ROOT], "likely", f"writable PATH dir {d}  ->  root (if root runs a relative binary)")
 
+    # leaked credentials found in files (LIKELY - a found password is a lead to try)
+    if f.get("creds"):
+        nid = node("cred", f"found\npassword(s)\n({len(f['creds'])})", "cred")
+        edge(START, nid, "likely", "password in a readable file")
+        edge(nid, ROOT, "likely", "reuse it: su root / sudo -l / ssh / mysql")
+        record_path([START, nid, ROOT], "likely",
+                    f"found {len(f['creds'])} credential(s) in files  ->  try su root / password reuse")
+
     # kernel version -> CVE matches (LIKELY - version alone isn't proof; distros backport)
     if f["kernel"]:
         matches = kernel_cve_matches(f["kernel"])
@@ -634,6 +657,20 @@ def build_graph(f):
             n["desc"] = f"Your user is a member of the '{g}' group, which grants root-equivalent power on this box."
             n["abuse"] = DANGEROUS_GROUPS.get(g, "")
             n["ref"] = "https://swisskyrepo.github.io/InternalAllTheThings/redteam/escalation/linux-privilege-escalation/#groups"
+        elif nid == "cred":
+            found = f.get("creds", [])
+            listing = "\n".join("  " + c for c in found[:15])
+            more = f"\n  ...(+{len(found)-15} more)" if len(found) > 15 else ""
+            n["desc"] = ("LinPEAS found what look like passwords in readable files (config.php, .env, "
+                         "history, backups...). Reused credentials are one of the most common root paths — "
+                         "and easy to miss in the wall of output.")
+            n["abuse"] = ("# lines that look like credentials:\n" + listing + more +
+                          "\n\n# then TRY each password:\n"
+                          "su root            # enter it at the prompt\n"
+                          "su <other-user>    # it may unlock a more privileged user\n"
+                          "sudo -l            # re-check sudo now that you may have a password\n"
+                          "# and reuse it: ssh, mysql -u root -p, other services")
+            n["ref"] = "https://swisskyrepo.github.io/InternalAllTheThings/redteam/escalation/linux-privilege-escalation/#looting-for-passwords"
         elif nid == "docksock":
             n["desc"] = "/var/run/docker.sock is writable — you can talk to the Docker daemon (runs as root) directly."
             n["abuse"] = "docker -H unix:///var/run/docker.sock run -v /:/mnt --rm -it alpine chroot /mnt sh"
@@ -775,6 +812,7 @@ def load_findings(text):
             "writable_systemd": j.get("writable_systemd", []),
             "nfs": j.get("nfs", []),
             "path_hijack": j.get("path_hijack", []),
+            "creds": j.get("creds", []),
         }
         return f
     return parse_linpeas(text)
